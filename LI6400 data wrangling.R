@@ -38,6 +38,10 @@ parse.licor <- function(raw){
     #separate out sample ID and then further separate however you like. This will need to be customized
     separate(HHMMSS, into = c("HHMMSS", "sampleID"), sep = " ") %>% 
     separate(sampleID, into = c("plot.id", "plant.id", "leaf"), sep = ".") %>%
+    separate(leaf, into = c("leaf", "trash"), sep ="\"") %>% 
+    
+    #the Remark line ends with a quotation mark and some other stuff you don't need. This gets rid of it
+    separate(leaf, into = c("leaf", "trash"), sep ="\"") %>% 
     select(rowid, plot.id, plant.id, leaf) %>% 
     
     #after creating a data frame of just relevant sample ID info and rowid, merge with the original data
