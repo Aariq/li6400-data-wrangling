@@ -100,7 +100,7 @@ And we are complete!  Now you can output this file with one of the `write_` func
 
 # Starting from excel files
 
-My first attempt at doing this was starting with excel files.  Unforutnately the .xls files from the Li-Cor can't be read by `read_xls()` so I had to open them in Excel and save them as .xlsx files as a starting point.
+My first attempt at doing this was starting with excel files.  Unforutnately the .xls files from the Li-Cor can't be read by `read_xls()` so I had to open them in Excel and save them as .xlsx files as a starting point.  It's not currently grabbing the sample ID's correctly.
 ```{r}
 #folder where the .xlsx files are
 data.dir = here("relicor")
@@ -171,23 +171,6 @@ My notes show that I forgot to add a remark for A7 leaf b.  I should be able to 
 data$leaf[data$Date.Time >= "2017-8-25 09:56:00" & data$Date.Time <= "2017-8-25 09:59:00"] <- "b"
 data %>% filter(plot.id == "a" & plant.id == 7)
 ```
-Add treatment info
-```{r}
-treatments <- read_csv("treatments.csv") %>% mutate_all(as.factor)
-
-data <- right_join(data, treatments, by = c("plot.id" = "Plot")) %>%
-  select(Treatment, everything())
-
-data
-```
-
-
-
-bingo!  write it to a .csv
-```{r}
-write_csv(data, "photosynthesis data 8-25-2017.csv")
-```
-
 
 
 
