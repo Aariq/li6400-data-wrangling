@@ -8,7 +8,7 @@ library(tidyverse)
 library(readxl)
 
 #folder where the .xlsx files are
-data.dir <- "/Users/usrname/Documents/relicor"
+data.dir <- "/Users//Documents/relicor"
 
 #a vector of all the paths
 (paths <- list.files(data.dir, "*.xlsx") %>% 

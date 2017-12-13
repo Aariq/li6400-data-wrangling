@@ -1,0 +1,193 @@
+---
+title: "Reading and Wrangling LI-COR data"
+output: html_notebook
+---
+The LI-COR outputs a single text file as well as individual .xls files.  Both sources of data present problems.  The text file is one big file interrupted by meta data, so we need to do some work to weed that out.  The excel files also have metadata in their headers, and end up reading in a little differently than the text files.  I think the text file way might be the best, but I've included both approaches for your interest.
+
+```{r packages}
+library(tidyverse)
+library(readxl)
+library(here)
+library(stringr)
+```
+
+
+# Starting from the text file
+```{r}
+raw <- read_file(here("relicor/tea 8-22-17 eric.txt"))
+startpattern <- "\\$STARTOFDATA\\$"
+# str_view_all(raw, startpattern)
+
+endpattern <- "\"OPEN \\d\\.\\d\\.\\d"
+# str_view_all(raw, endpattern)
+
+#splits into individual events
+raw_split <- str_split(raw, endpattern, simplify = TRUE)
+
+
+raw_split2 <- str_split(raw_split, startpattern, simplify = FALSE)
+
+#extract just the second element, the actual data
+raw_split3 <- raw_split2 %>% map(`[`, 2) %>% flatten_chr()
+
+#remove any NAs
+raw_split3 <- raw_split3[!is.na(raw_split3)]
+#raw_split3
+
+#read all the text into a list of data frames
+input <- raw_split3 %>% map(read_tsv, skip = 1)
+```
+## Combine data into one data frame
+Since they all have the same header, we can just combine them into one data frame now which simplifies future wrangling.
+```{r}
+input.combined <- bind_rows(input)
+```
+
+## Move remarks into their own column
+The Obs column contains two things: observation number, and text of remarks.  Ideally, remark should be its own column with NAs where there are actual observations and Obs should have NAs on lines containing remarks.
+```{r}
+#create a "safe" version of as.integer() that returns a list of a result and error
+safe_as.int <- safely(as.integer)
+
+#gives error for text remarks, gives value for integer observation numbers
+# safe_as.int(test[17])
+# safe_as.int(test(7))
+
+input.combined <- input.combined %>% 
+  mutate(#create a comment column to indicate if an "Obs" is actually a remark
+       comment = is.na(safe_as.int(Obs)$result), 
+       #copy those remarks to the remark column
+       remark = ifelse(comment == TRUE, Obs, NA),
+       #remove remarks from Obs column
+       Obs = ifelse(comment == FALSE, Obs, NA)) %>% 
+#move the remark column the the begining
+select(remark, everything()) %>% 
+#remove the comment column.  We're done with it
+select(-comment)
+input.combined
+```
+## Extract sample data from remarks
+I've coded my sample data as follows: plotplant leaf.  In hindsight, this was not a good way to code the sample IDs.  Don't be like me, use a separator like _ or * or ..  Something that isn't already in the remarks. This will probably make it easier for you to "find" the sample IDs in the remarks and then separate them out into columns using `separate()` from `tidyr` later.
+```{r}
+#replace NA with "NA" so str_ functions can deal with it
+input.combined <- input.combined %>% mutate(remark = str_replace_na(remark))
+
+#this must be customized to match whatever your sample naming scheme is.
+IDpattern <- "[:lower:]\\d+[:blank:][:lower:]"
+#str_view_all(input.combined$remark, IDpattern)
+
+#create new column of sample IDs
+input.combined <- input.combined %>%
+  mutate(sampleID = str_extract(remark, IDpattern)) %>% 
+  select(sampleID, everything())
+```
+
+## Fill down sample IDs
+This replaces NAs below a value with that value.
+```{r}
+#get rid of other remarks and fill down the sample ID column
+output <- input.combined %>% 
+  filter(!xor(remark == "NA" , is.na(sampleID))) %>%
+  fill(sampleID) %>% 
+  #get rid of the rest of the remark rows
+  filter(complete.cases(.)) %>% 
+  #get rid of the remark column
+  select(-remark)
+output
+```
+And we are complete!  Now you can output this file with one of the `write_` functions from `readr` or go ahead with analysis and plotting from this object.  If you're interested in differences between plots, plants, and leaves, you could use `separate()` to create those columns from the `sampleID` column.
+
+
+# Starting from excel files
+
+My first attempt at doing this was starting with excel files.  Unforutnately the .xls files from the Li-Cor can't be read by `read_xls()` so I had to open them in Excel and save them as .xlsx files as a starting point.
+```{r}
+#folder where the .xlsx files are
+data.dir = here("relicor")
+#a vector of all the paths
+(paths <- list.files(data.dir, "*.xlsx") %>% 
+  paste0(data.dir, "/", .))
+
+#test one to make sure it works
+#read_xlsx(paths[1], skip = 7)
+
+#read all the .xlsx files into a list
+raw.list <- paths %>% map(read_xlsx, skip = 7)
+raw <- raw.list[[1]]
+```
+
+
+```{r}
+#function for parsing the data frames created by reading in the .xlsx files  
+parse.licor <- function(raw){
+  #add column id's to keep track of rows and allow easier joining later
+  raw1 <- raw %>% 
+  rowid_to_column() 
+  
+  #this section is for getting sample ID's entered in as remarks.  You'll have to customize based on your system for labeling.
+  raw1 %>% 
+  filter(Obs == "Remark=") %>% 
+  filter(grepl("[[:lower:]]\\s[[:digit:]]", .$HHMMSS)) %>% 
+  separate(HHMMSS, into = c("HHMMSS", "plot.id", "plant.id", "leaf"), sep = " ") %>% 
+  separate(leaf, into = c("leaf", "trash"), sep ="\"") %>% 
+  select(rowid, plot.id, plant.id, leaf) %>% 
+  
+  #after creating a data frame of just relevant sample ID info and rowid, merge with the original data
+  right_join(raw1) %>% 
+  
+  #then fill all relevant sample ID data down
+  fill(plot.id, leaf, plant.id) %>% 
+  
+  #then remove unnecessary rows and columns
+  filter(Obs != "Remark=" & Obs != "in") %>% 
+  select(-rowid)
+}
+
+#apply tidying function to all data frames
+parsed.data <- lapply(raw.list, parse.licor)
+```
+Great! Now time to row_bind them all into one df.  There might actually be a better function that is specifically designed for simplifying lists.
+
+Sweet!  Now I need to apply that pipeline to all the .xlsx files and then stitch them together with `bind_rows()`
+
+```{r}
+data.raw <- bind_rows(parsed.data)
+
+data <- data.raw %>%
+  mutate(plot.id = as.factor(plot.id), 
+         plant.id = as.factor(plant.id), 
+         leaf = as.factor(leaf), 
+         Date.Time = as.POSIXct(paste("2017-8-25", .$HHMMSS))) %>%
+  select(plot.id, plant.id, leaf, Obs, Date.Time, everything()) %>% 
+  select(-HHMMSS) %>% 
+  mutate_if(is.character, as.numeric)
+
+data
+```
+
+My notes show that I forgot to add a remark for A7 leaf b.  I should be able to tell by the time which belong to b
+
+```{r}
+data$leaf[data$Date.Time >= "2017-8-25 09:56:00" & data$Date.Time <= "2017-8-25 09:59:00"] <- "b"
+data %>% filter(plot.id == "a" & plant.id == 7)
+```
+Add treatment info
+```{r}
+treatments <- read_csv("treatments.csv") %>% mutate_all(as.factor)
+
+data <- right_join(data, treatments, by = c("plot.id" = "Plot")) %>%
+  select(Treatment, everything())
+
+data
+```
+
+
+
+bingo!  write it to a .csv
+```{r}
+write_csv(data, "photosynthesis data 8-25-2017.csv")
+```
+
+
+
+
