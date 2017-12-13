@@ -1,2 +1,4 @@
 # li6400-data-wrangling
 the LI6400 portable photosynthesis meter exports data as a series of poorly formatted .xls files.  If you've used "add remark" to indicate sample ID, these are shown as rows, not a separate column. This script extracts relevant data, and moves the sample ID information from remarks into a column.
+
+In this example, I've recorded photosynthesis measurements from several plots, several plants within a plot  and three leaves per plant.  For each leaf, I recorded three measurements. Each time I switched leaves, I added a remark that indicated plot with a letter, plant ID with a number, and leaf with "a", "b", or "c".  The output is in multiple files since I had to unplug the LI6400 and move it between plots.
