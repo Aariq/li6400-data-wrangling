@@ -8,13 +8,12 @@ The LI-COR outputs a single text file as well as individual .xls files.  Both so
 library(tidyverse)
 library(readxl)
 library(here)
-library(stringr)
 ```
 
 
 # Starting from the text file
 ```{r}
-raw <- read_file(here("relicor/tea 8-22-17 eric.txt"))
+raw <- read_file(here("relicor", "tea 8-22-17 eric.txt"))
 startpattern <- "\\$STARTOFDATA\\$"
 # str_view_all(raw, startpattern)
 
@@ -23,7 +22,6 @@ endpattern <- "\"OPEN \\d\\.\\d\\.\\d"
 
 #splits into individual events
 raw_split <- str_split(raw, endpattern, simplify = TRUE)
-
 
 raw_split2 <- str_split(raw_split, startpattern, simplify = FALSE)
 
